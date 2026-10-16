@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: chargelink-db
+    environment:
+      POSTGRES_USER: chargelink
+      POSTGRES_PASSWORD: chargelink
+      POSTGRES_DB: chargelink
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
+
+volumes:
+  pgdata:
