@@ -2,4 +2,4 @@ build/
 .vs/
 out/
 CMakeFiles/
-CMakeSettings.json
+CMakeSettings.jsonvcpkg_installed/
