@@ -47,6 +47,12 @@ target_include_directories(chargelink_common PUBLIC src/common/include)
 target_link_libraries(chargelink_common PUBLIC nlohmann_json::nlohmann_json)
 chargelink_setup(chargelink_common)
 
+# ---- simulator logic (state machine now; more later) ----
+add_library(chargelink_sim STATIC src/simulator/src/connector_fsm.cpp)
+target_include_directories(chargelink_sim PUBLIC src/simulator/include)
+target_link_libraries(chargelink_sim PUBLIC chargelink_common)
+chargelink_setup(chargelink_sim)
+
 # ---- executables ----
 add_executable(csms src/csms/main.cpp)
 target_link_libraries(csms PRIVATE chargelink_common)
@@ -61,7 +67,9 @@ enable_testing()
 add_executable(chargelink_tests
     tests/test_frame.cpp
     tests/test_messages.cpp
-    tests/test_dispatcher.cpp)
-target_link_libraries(chargelink_tests PRIVATE chargelink_common GTest::gtest GTest::gtest_main)
+    tests/test_dispatcher.cpp
+    tests/test_connector_fsm.cpp)
+target_link_libraries(chargelink_tests PRIVATE
+    chargelink_sim chargelink_common GTest::gtest GTest::gtest_main)
 include(GoogleTest)
 gtest_discover_tests(chargelink_tests)
