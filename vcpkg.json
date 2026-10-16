@@ -1,0 +1,11 @@
+{
+  "name": "chargelink",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "boost-beast",
+    "nlohmann-json",
+    "spdlog",
+    "gtest"
+  ],
+  "builtin-baseline": "3cd21e48a75f67acfef289da52893ce79144aaa1"
+}
