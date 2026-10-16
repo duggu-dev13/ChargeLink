@@ -1,21 +1,20 @@
 cmake_minimum_required(VERSION 3.20)
 project(chargelink VERSION 0.1.0 LANGUAGES CXX)
 
-# Temporary diagnostics: remove once configure works
-message(STATUS "DIAG compiler      = ${CMAKE_CXX_COMPILER}")
-message(STATUS "DIAG sizeof(void*) = '${CMAKE_SIZEOF_VOID_P}'")
+# Fail early with a clear message if the terminal is 32-bit
+if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+  message(FATAL_ERROR
+    "32-bit compiler detected. Run vcvars64.bat in this terminal and delete the build folder.")
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Config-file packages first
 find_package(spdlog CONFIG REQUIRED)
-message(STATUS "DIAG after spdlog  = '${CMAKE_SIZEOF_VOID_P}'")
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 find_package(Boost REQUIRED)
-message(STATUS "DIAG after Boost   = '${CMAKE_SIZEOF_VOID_P}'")
 
 # pthreads is not used on Windows
 if(NOT WIN32)
@@ -38,11 +37,12 @@ function(chargelink_setup target)
   endif()
 endfunction()
 
-# ---- shared library: OCPP frames, messages, utilities ----
+# ---- shared library: OCPP frames, messages, dispatcher, utilities ----
 add_library(chargelink_common STATIC
     src/common/src/frame.cpp
     src/common/src/messages.cpp
-    src/common/src/time.cpp)
+    src/common/src/time.cpp
+    src/common/src/dispatcher.cpp)
 target_include_directories(chargelink_common PUBLIC src/common/include)
 target_link_libraries(chargelink_common PUBLIC nlohmann_json::nlohmann_json)
 chargelink_setup(chargelink_common)
@@ -60,7 +60,8 @@ chargelink_setup(simulator)
 enable_testing()
 add_executable(chargelink_tests
     tests/test_frame.cpp
-    tests/test_messages.cpp)
+    tests/test_messages.cpp
+    tests/test_dispatcher.cpp)
 target_link_libraries(chargelink_tests PRIVATE chargelink_common GTest::gtest GTest::gtest_main)
 include(GoogleTest)
 gtest_discover_tests(chargelink_tests)
