@@ -39,6 +39,11 @@ namespace chargelink::sim {
         // --- measurements ---
         virtual int energy_wh() const = 0;        // total register, only ever increases
         virtual double temperature_c() const = 0;
+
+        // --- measurements ---
+        virtual int energy_wh() const = 0;        // total register, only ever increases
+        virtual double current_amps() const = 0;  // current flowing right now
+        virtual double temperature_c() const = 0;
     };
 
 }  // namespace chargelink::sim

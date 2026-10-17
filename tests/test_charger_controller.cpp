@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <vector>
+#include <string>
 
 #include "chargelink/sim/charger_controller.hpp"
 #include "chargelink/sim/sim_hardware.hpp"
@@ -338,4 +339,29 @@ TEST(Controller, ContactorIsClosedOnlyWhileCharging) {
     }
     r.ctl.stop(StopReason::Local);
     EXPECT_FALSE(r.hw.contactor_closed());
+}
+
+TEST(Controller, SessionStartIsReportedBeforeTheChargingStatus) {
+    SimHardware hw;
+    ChargerController ctl{ hw };
+    std::vector<std::string> events;
+
+    ctl.set_on_status_change(
+        [&events](ChargePointStatus, ChargePointStatus to, ChargePointErrorCode) {
+            if (to == ChargePointStatus::Charging) events.push_back("status:Charging");
+            if (to == ChargePointStatus::Finishing) events.push_back("status:Finishing");
+        });
+    ctl.set_on_session_started([&events](int) { events.push_back("started"); });
+    ctl.set_on_session_ended([&events](int, StopReason) { events.push_back("ended"); });
+
+    hw.plug_car();
+    ctl.tick();
+    ctl.authorize();
+    ctl.tick();
+    ctl.tick();
+    ctl.stop(StopReason::Local);
+
+    std::vector<std::string> expected = { "started", "status:Charging", "ended",
+                                         "status:Finishing" };
+    EXPECT_TRUE(events == expected);
 }

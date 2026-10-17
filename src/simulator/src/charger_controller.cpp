@@ -124,13 +124,18 @@ namespace chargelink::sim {
 
     void ChargerController::start_session() {
         hw_.set_contactor(true);
-        if (!fsm_.handle(Event::ChargingStarted)) {
-            hw_.set_contactor(false);  // the state machine refused: do not leave power on
-            return;
-        }
         session_active_ = true;
+
+        // Report the session BEFORE the state change: OCPP expects StartTransaction to come
+        // before the StatusNotification(Charging) that the state change triggers.
         if (on_session_started_) {
             on_session_started_(hw_.energy_wh());
+        }
+
+        if (!fsm_.handle(Event::ChargingStarted)) {
+            // Cannot happen (drive_session checked the conditions), but never leave power on.
+            power_down();
+            session_active_ = false;
         }
     }
 
