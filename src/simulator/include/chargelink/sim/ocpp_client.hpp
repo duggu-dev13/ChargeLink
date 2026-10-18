@@ -10,10 +10,12 @@
 #include <chrono>
 #include <cstddef>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <string>
 
 #include "chargelink/ocpp/call_tracker.hpp"
+#include "chargelink/ocpp/caller.hpp"
 #include "chargelink/ocpp/dispatcher.hpp"
 #include "chargelink/ocpp/messages.hpp"
 
@@ -35,28 +37,37 @@ namespace chargelink::sim {
 
     // Connects to a CSMS, registers with BootNotification, then sends heartbeats.
     // Everything runs on one strand, so no locks are needed.
-    class OcppClient : public std::enable_shared_from_this<OcppClient> {
+    class OcppClient : public ocpp::ICaller, public std::enable_shared_from_this<OcppClient> {
     public:
         using ReplyCallback = ocpp::CallTracker::Callback;
+        using Executor = boost::asio::strand<boost::asio::io_context::executor_type>;
 
         // Always create through this function: the client must be owned by a shared_ptr.
-        static std::shared_ptr<OcppClient> create(boost::asio::io_context& ioc, ClientConfig config);
+        static std::shared_ptr<OcppClient> create(Executor strand, ClientConfig config);
+
+        // The strand all the client's work runs on. Other objects that must not run
+        // concurrently with the client (timers, the station) should use it too.
+        Executor executor() const { return strand_; }
 
         // Handlers for CALLs sent BY the CSMS (RemoteStartTransaction, Reset, ...).
         // Register them before start(): this is not synchronised with the network strand.
         ocpp::Dispatcher& dispatcher() { return dispatcher_; }
 
+        // Called on the strand when BootNotification is accepted, and when the client stops.
+        // Set them before start().
+        void set_on_registered(std::function<void()> callback) { on_registered_ = std::move(callback); }
+        void set_on_closed(std::function<void()> callback) { on_closed_ = std::move(callback); }
+
         void start();  // resolve, connect, handshake, BootNotification, heartbeats
         void stop();   // drop the connection and cancel everything
 
         // Send a CALL and be told what happened to it. Safe to call from any thread.
-        void call(std::string action, ocpp::json payload, ReplyCallback on_reply);
+        void call(std::string action, ocpp::json payload, ReplyCallback on_reply) override;
 
     private:
-        using Strand = boost::asio::strand<boost::asio::io_context::executor_type>;
         using Tcp = boost::asio::ip::tcp;
 
-        OcppClient(boost::asio::io_context& ioc, ClientConfig config);
+        OcppClient(Executor strand, ClientConfig config);
 
         // connection chain
         void do_resolve();
@@ -90,7 +101,7 @@ namespace chargelink::sim {
         void fail(const char* what, boost::beast::error_code ec);
         void shutdown();
 
-        Strand strand_;
+        Executor strand_;
         Tcp::resolver resolver_;
         boost::beast::websocket::stream<boost::beast::tcp_stream> ws_;
         boost::beast::flat_buffer buffer_;
@@ -105,6 +116,8 @@ namespace chargelink::sim {
 
         ocpp::CallTracker tracker_;
         ocpp::Dispatcher dispatcher_;
+        std::function<void()> on_registered_;
+        std::function<void()> on_closed_;
 
         std::deque<std::string> write_queue_;
         bool writing_ = false;

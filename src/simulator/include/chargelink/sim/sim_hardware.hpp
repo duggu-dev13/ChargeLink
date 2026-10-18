@@ -15,6 +15,7 @@ namespace chargelink::sim {
         void set_contactor(bool closed) override { contactor_closed_ = closed; }
         bool contactor_closed() const override { return contactor_closed_; }
         int energy_wh() const override { return static_cast<int>(energy_wh_); }
+        double current_amps() const override { return current_draw_amps(); }
         double temperature_c() const override { return temperature_c_; }
 
         // ----- simulation controls (not part of IHardware) -----

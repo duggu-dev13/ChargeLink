@@ -43,19 +43,24 @@ add_library(chargelink_common STATIC
     src/common/src/messages.cpp
     src/common/src/time.cpp
     src/common/src/dispatcher.cpp
-    src/common/src/call_tracker.cpp)
+    src/common/src/call_tracker.cpp
+    src/common/src/backoff.cpp)
 target_include_directories(chargelink_common PUBLIC src/common/include)
 target_link_libraries(chargelink_common PUBLIC nlohmann_json::nlohmann_json)
 chargelink_setup(chargelink_common)
 
-# ---- simulator logic: state machine, hardware, controller, bridge, network client ----
+# ---- simulator: state machine, hardware, controller, bridge, link, clients, station ----
 add_library(chargelink_sim STATIC
     src/simulator/src/connector_fsm.cpp
     src/simulator/src/hardware.cpp
     src/simulator/src/sim_hardware.cpp
     src/simulator/src/charger_controller.cpp
     src/simulator/src/session_bridge.cpp
-    src/simulator/src/ocpp_client.cpp)
+    src/simulator/src/ocpp_link.cpp
+    src/simulator/src/console.cpp
+    src/simulator/src/ocpp_client.cpp
+    src/simulator/src/reconnecting_client.cpp
+    src/simulator/src/station.cpp)
 target_include_directories(chargelink_sim PUBLIC src/simulator/include)
 target_link_libraries(chargelink_sim PUBLIC chargelink_common)
 chargelink_setup(chargelink_sim)
@@ -79,7 +84,10 @@ add_executable(chargelink_tests
     tests/test_hardware.cpp
     tests/test_charger_controller.cpp
     tests/test_call_tracker.cpp
-    tests/test_session_bridge.cpp)
+    tests/test_session_bridge.cpp
+    tests/test_console.cpp
+    tests/test_ocpp_link.cpp
+    tests/test_backoff.cpp)
 target_link_libraries(chargelink_tests PRIVATE
     chargelink_sim chargelink_common GTest::gtest GTest::gtest_main)
 include(GoogleTest)

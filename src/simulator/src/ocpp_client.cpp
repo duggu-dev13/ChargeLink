@@ -19,12 +19,12 @@ namespace chargelink::sim {
 
     // ---------- construction and public API ----------
 
-    std::shared_ptr<OcppClient> OcppClient::create(net::io_context& ioc, ClientConfig config) {
-        return std::shared_ptr<OcppClient>(new OcppClient(ioc, std::move(config)));
+    std::shared_ptr<OcppClient> OcppClient::create(Executor strand, ClientConfig config) {
+        return std::shared_ptr<OcppClient>(new OcppClient(std::move(strand), std::move(config)));
     }
 
-    OcppClient::OcppClient(net::io_context& ioc, ClientConfig config)
-        : strand_(net::make_strand(ioc)),
+    OcppClient::OcppClient(Executor strand, ClientConfig config)
+        : strand_(std::move(strand)),
         resolver_(strand_),
         ws_(strand_),
         heartbeat_timer_(strand_),
@@ -262,6 +262,9 @@ namespace chargelink::sim {
             }
             spdlog::info("[{}] boot accepted, heartbeat every {} s", id, heartbeat_interval_.count());
             schedule_heartbeat();
+            if (on_registered_) {
+                on_registered_();
+            }
         }
         else {
             // Pending or Rejected: OCPP says to wait and send BootNotification again.
@@ -373,6 +376,9 @@ namespace chargelink::sim {
         // Anyone waiting for an answer learns that none will come.
         tracker_.fail_all(CallOutcome::Status::Disconnected);
         spdlog::info("[{}] client stopped", config_.charge_point_id);
+        if (on_closed_) {
+            on_closed_();
+        }
     }
 
 }  // namespace chargelink::sim
