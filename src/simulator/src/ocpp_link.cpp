@@ -63,23 +63,31 @@ namespace chargelink::sim {
             });
     }
 
+    // The answer arrives when the message is finally delivered, possibly after a long outage.
+    // nullopt means "we gave up" (repeated errors or timeouts) or "the queue was full".
     void OcppLink::start_transaction(
         const ocpp::StartTransactionRequest& request,
         std::function<void(std::optional<ocpp::StartTransactionResponse>)> on_result) {
         const char* action = ocpp::StartTransactionRequest::kAction;
-        caller_.call(action, ocpp::json(request),
-            [action, on_result = std::move(on_result)](const CallOutcome& outcome) {
+        const bool queued = reliable_.enqueue(
+            action, ocpp::json(request), [action, on_result](const CallOutcome& outcome) {
                 on_result(read_reply<ocpp::StartTransactionResponse>(action, outcome));
             });
+        if (!queued) {
+            spdlog::error("{}: the offline queue is full, the message was dropped", action);
+            on_result(std::nullopt);
+        }
     }
 
-    // StopTransaction and MeterValues are fire-and-forget for now. A real charger would keep
-    // them in a queue and retry; that is the offline queue, a later step.
     void OcppLink::stop_transaction(const ocpp::StopTransactionRequest& request) {
         const char* action = ocpp::StopTransactionRequest::kAction;
-        caller_.call(action, ocpp::json(request), log_failures(action));
+        if (!reliable_.enqueue(action, ocpp::json(request), log_failures(action))) {
+            spdlog::error("{}: the offline queue is full, the message was dropped", action);
+        }
     }
 
+    // MeterValues stay best-effort: a sample missed during an outage is not worth queueing,
+    // because StopTransaction carries the final reading.
     void OcppLink::send_meter_values(const ocpp::MeterValuesRequest& request) {
         const char* action = ocpp::MeterValuesRequest::kAction;
         caller_.call(action, ocpp::json(request), log_failures(action));

@@ -60,6 +60,7 @@ namespace chargelink::sim {
         std::weak_ptr<Station> weak = weak_from_this();
         client_->set_on_registered([weak] {
             if (auto self = weak.lock()) {
+                self->link_.set_online(true);
                 self->bridge_.set_registered(true);
                 say("registered with the CSMS");
             }
@@ -131,6 +132,7 @@ namespace chargelink::sim {
     // working: the controller does not depend on the network.
     void Station::on_connection_lost() {
         const bool was_registered = bridge_.registered();
+        link_.set_online(false);
         bridge_.set_registered(false);
         if (was_registered && !stopped_) {
             say("connection lost: the charger keeps working locally and will reconnect");
@@ -240,6 +242,7 @@ namespace chargelink::sim {
             << "  energy    : " << hw_.energy_wh() << " Wh\n"
             << "  temp      : " << hw_.temperature_c() << " C\n"
             << "  csms      : " << (bridge_.registered() ? "registered" : "not registered") << "\n"
+            << "  queued    : " << link_.queued() << " message(s) waiting for the CSMS\n"
             << "  session   : " << (ctl_.session_active() ? "active" : "none")
             << ", simulated time x" << time_scale_ << std::endl;
     }

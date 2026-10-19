@@ -87,16 +87,18 @@ namespace chargelink::sim {
     // ---------- authorization ----------
 
     SessionBridge::TapResult SessionBridge::tap(const std::string& id_tag) {
-        if (!registered_) {
-            return TapResult::NotRegistered;
-        }
-
+        // Ending our own session is a local decision: it must work offline too.
         if (ctl_.session_active()) {
             if (id_tag == current_tag_) {
                 ctl_.stop(StopReason::Local);  // tapping the same card again ends the session
                 return TapResult::StoppedSession;
             }
             return TapResult::Busy;
+        }
+
+        // Starting one needs the CSMS to say yes.
+        if (!registered_) {
+            return TapResult::NotRegistered;
         }
 
         const ChargePointStatus status = ctl_.status();
@@ -125,16 +127,11 @@ namespace chargelink::sim {
 
     // ---------- transactions ----------
 
+    // Even if the link dropped since the authorization, the start is handed to the link, which
+    // queues it. The energy delivered must not go unreported.
     void SessionBridge::on_session_started(int meter_start_wh) {
         Transaction txn;
         txn.id_tag = current_tag_;
-
-        if (!registered_) {
-            txn.start_failed = true;  // nobody to tell
-            txn_ = std::move(txn);
-            spdlog::warn("session started while unregistered: it will not be reported");
-            return;
-        }
         txn_ = std::move(txn);
 
         ocpp::StartTransactionRequest request;

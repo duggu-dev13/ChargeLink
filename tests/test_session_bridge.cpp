@@ -309,22 +309,64 @@ TEST(Bridge, RejectedStartStopsTheSessionWithDeAuthorized) {
     EXPECT_EQ(r.link.stops[0].transaction_id, 9);
     EXPECT_TRUE(*r.link.stops[0].reason == StopReason::DeAuthorized);
 }
+// ---------- Step 17: transactions are handed to the (queueing) link even when offline ----------
 
-TEST(Bridge, SessionStartedWhileUnregisteredIsNeverReported) {
+TEST(Bridge, ASessionThatStartsJustAfterTheLinkDroppedIsStillReported) {
+    Rig r;
+    r.bridge.set_registered(true);
+    r.hw.plug_car();
+    r.ctl.tick();
+    r.bridge.tap("TAG1");
+    r.link.auths[0].done(AuthorizationStatus::Accepted);
+    r.bridge.set_registered(false);  // the link drops before the car answers
+    r.ctl.tick();
+    r.ctl.tick();
+
+    EXPECT_TRUE(r.ctl.session_active());
+    ASSERT_EQ(r.link.starts.size(), 1u);  // handed over: the real link queues it
+    EXPECT_EQ(r.link.starts[0].request.id_tag, "TAG1");
+
+    r.link.starts[0].done(start_reply(5));  // delivered after reconnecting
+    r.bridge.tap("TAG1");
+    ASSERT_EQ(r.link.stops.size(), 1u);
+    EXPECT_EQ(r.link.stops[0].transaction_id, 5);
+}
+
+TEST(Bridge, AStopDuringAnOutageIsHandedToTheLink) {
+    Rig r;
+    r.bridge.set_registered(true);
+    r.start_session();
+    r.link.starts[0].done(start_reply(42));
+
+    r.bridge.set_registered(false);  // outage
+    r.hw.unplug_car();
+    r.ctl.tick();
+
+    ASSERT_EQ(r.link.stops.size(), 1u);  // the real link queues it until we are back
+    EXPECT_EQ(r.link.stops[0].transaction_id, 42);
+    EXPECT_TRUE(*r.link.stops[0].reason == StopReason::EVDisconnected);
+}
+
+TEST(Bridge, TappingTheSameCardStopsTheSessionEvenOffline) {
+    Rig r;
+    r.bridge.set_registered(true);
+    r.start_session("TAG1");
+    r.link.starts[0].done(start_reply(42));
+
+    r.bridge.set_registered(false);
+    EXPECT_TRUE(r.bridge.tap("TAG1") == SessionBridge::TapResult::StoppedSession);
+    EXPECT_FALSE(r.ctl.session_active());
+    EXPECT_FALSE(r.hw.contactor_closed());
+    EXPECT_EQ(r.link.stops.size(), 1u);
+}
+
+TEST(Bridge, StartingASessionStillNeedsTheCsms) {
     Rig r;  // never registered
     r.hw.plug_car();
     r.ctl.tick();
-    r.ctl.authorize();  // bypass the bridge: local authorization
-    r.ctl.tick();
-    r.ctl.tick();
-    EXPECT_TRUE(r.ctl.session_active());
-    EXPECT_TRUE(r.link.starts.empty());
-
-    r.ctl.stop(StopReason::Local);
-    EXPECT_TRUE(r.link.stops.empty());
-    EXPECT_TRUE(r.link.events.empty());
+    EXPECT_TRUE(r.bridge.tap("TAG1") == SessionBridge::TapResult::NotRegistered);
+    EXPECT_TRUE(r.link.auths.empty());
 }
-
 // ---------- meter values ----------
 
 TEST(Bridge, MeterValuesWaitForTheTransactionId) {

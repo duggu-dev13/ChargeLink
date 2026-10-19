@@ -37,13 +37,14 @@ function(chargelink_setup target)
   endif()
 endfunction()
 
-# ---- shared library: OCPP frames, messages, dispatcher, call tracker, utilities ----
+# ---- shared library: OCPP frames, messages, dispatcher, call tracker, outbox, utilities ----
 add_library(chargelink_common STATIC
     src/common/src/frame.cpp
     src/common/src/messages.cpp
     src/common/src/time.cpp
     src/common/src/dispatcher.cpp
     src/common/src/call_tracker.cpp
+    src/common/src/reliable_sender.cpp
     src/common/src/backoff.cpp)
 target_include_directories(chargelink_common PUBLIC src/common/include)
 target_link_libraries(chargelink_common PUBLIC nlohmann_json::nlohmann_json)
@@ -87,7 +88,8 @@ add_executable(chargelink_tests
     tests/test_session_bridge.cpp
     tests/test_console.cpp
     tests/test_ocpp_link.cpp
-    tests/test_backoff.cpp)
+    tests/test_backoff.cpp
+    tests/test_reliable_sender.cpp)
 target_link_libraries(chargelink_tests PRIVATE
     chargelink_sim chargelink_common GTest::gtest GTest::gtest_main)
 include(GoogleTest)
