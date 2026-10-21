@@ -6,7 +6,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 4)
     "32-bit compiler detected. Run vcvars64.bat in this terminal and delete the build folder.")
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -14,6 +14,7 @@ find_package(spdlog CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 find_package(Boost REQUIRED)
+find_package(libpqxx CONFIG REQUIRED)
 
 if(NOT WIN32)
   find_package(Threads REQUIRED)
@@ -47,6 +48,20 @@ add_library(chargelink_common STATIC
 target_include_directories(chargelink_common PUBLIC src/common/include)
 target_link_libraries(chargelink_common PUBLIC nlohmann_json::nlohmann_json)
 chargelink_setup(chargelink_common)
+
+# ---- database layer (PostgreSQL via libpqxx) ----
+add_library(chargelink_db STATIC src/db/src/repository.cpp)
+target_include_directories(chargelink_db PUBLIC src/db/include)
+target_link_libraries(chargelink_db PUBLIC libpqxx::pqxx)
+chargelink_setup(chargelink_db)
+if(MSVC)
+  # libpqxx 8's DLL import lib re-exports std::string_view members that every
+  # object file already defines inline (LNK2005). They are identical, so allow it.
+  # PUBLIC: anything that links chargelink_db (tests, later csms.exe) gets the flag.
+  target_link_options(chargelink_db PUBLIC /FORCE:MULTIPLE)
+  # exec_prepared/exec_prepared0 are deprecated in libpqxx 8; silence until Step 22.
+  target_compile_options(chargelink_db PRIVATE /wd4996)
+endif()
 
 # ---- simulator ----
 add_library(chargelink_sim STATIC
@@ -107,8 +122,11 @@ add_executable(chargelink_tests
     tests/test_csms_path.cpp
     tests/test_charger_registry.cpp
     tests/test_csms_state.cpp
+    tests/test_repository.cpp
 )
+
 target_link_libraries(chargelink_tests PRIVATE
-    chargelink_sim chargelink_csms_core chargelink_common GTest::gtest GTest::gtest_main)
+    chargelink_sim chargelink_csms_core chargelink_db chargelink_common
+    GTest::gtest GTest::gtest_main)
 include(GoogleTest)
 gtest_discover_tests(chargelink_tests)
