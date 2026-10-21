@@ -68,6 +68,7 @@ chargelink_setup(chargelink_sim)
 add_library(chargelink_csms_core STATIC
     src/csms/src/path.cpp
     src/csms/src/charger_registry.cpp
+    src/csms/src/state.cpp
     src/csms/src/handlers.cpp)
 target_include_directories(chargelink_csms_core PUBLIC src/csms/include)
 target_link_libraries(chargelink_csms_core PUBLIC chargelink_common)
@@ -104,7 +105,9 @@ add_executable(chargelink_tests
     tests/test_backoff.cpp
     tests/test_reliable_sender.cpp
     tests/test_csms_path.cpp
-    tests/test_charger_registry.cpp)
+    tests/test_charger_registry.cpp
+    tests/test_csms_state.cpp
+)
 target_link_libraries(chargelink_tests PRIVATE
     chargelink_sim chargelink_csms_core chargelink_common GTest::gtest GTest::gtest_main)
 include(GoogleTest)

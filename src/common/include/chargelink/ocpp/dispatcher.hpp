@@ -4,10 +4,21 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <stdexcept>
 
 #include "chargelink/ocpp/messages.hpp"
 
 namespace chargelink::ocpp {
+
+    class CallException : public std::runtime_error {
+    public:
+        CallException(std::string code, const std::string& what)
+            : std::runtime_error(what), code_(std::move(code)) {}
+        const std::string& code() const { return code_; }
+
+    private:
+        std::string code_;
+    };
 
     class Dispatcher {
     public:

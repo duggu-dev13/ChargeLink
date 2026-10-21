@@ -51,6 +51,11 @@ namespace chargelink::ocpp {
             json result = it->second(charge_point_id, call->payload);
             return serialize(CallResult{ call->unique_id, std::move(result) });
         }
+        catch (const CallException& e) {  // a handler chose a specific OCPP error code
+            spdlog::warn("[{}] {} refused: {} ({})", charge_point_id, call->action, e.code(),
+                e.what());
+            return error_reply(call->unique_id, e.code().c_str(), e.what());
+        }
         catch (const ParseError& e) {
             spdlog::warn("[{}] bad {} payload: {}", charge_point_id, call->action, e.what());
             return error_reply(call->unique_id, "FormationViolation", e.what());
