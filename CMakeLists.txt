@@ -84,9 +84,10 @@ add_library(chargelink_csms_core STATIC
     src/csms/src/path.cpp
     src/csms/src/charger_registry.cpp
     src/csms/src/state.cpp
-    src/csms/src/handlers.cpp)
+    src/csms/src/handlers.cpp
+    src/csms/src/db_handlers.cpp)
 target_include_directories(chargelink_csms_core PUBLIC src/csms/include)
-target_link_libraries(chargelink_csms_core PUBLIC chargelink_common)
+target_link_libraries(chargelink_csms_core PUBLIC chargelink_common chargelink_db)
 chargelink_setup(chargelink_csms_core)
 
 add_library(chargelink_csms_net STATIC
@@ -123,6 +124,7 @@ add_executable(chargelink_tests
     tests/test_charger_registry.cpp
     tests/test_csms_state.cpp
     tests/test_repository.cpp
+    tests/test_db_handlers.cpp
 )
 
 target_link_libraries(chargelink_tests PRIVATE

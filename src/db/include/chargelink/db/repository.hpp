@@ -6,6 +6,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -28,11 +29,17 @@ namespace chargelink::db {
 
     enum class StopResult { Stopped, AlreadyStopped, NotFound, WrongCharger, MeterDecreased };
 
+    // Thrown when PostgreSQL rejects a VALUE the charger sent (bad timestamp, number out of
+    // range). The handlers turn it into an OCPP FormationViolation.
+    class BadInputError : public std::runtime_error {
+    public:
+        using std::runtime_error::runtime_error;
+    };
+
     // Thread-safe. Holds a small pool of connections; every call is one short transaction
     // (commit on success, rollback on exception). Timestamps are ISO-8601 strings, parsed by
-    // PostgreSQL. Methods throw std::exception subclasses (pqxx::sql_error, ...) on failure.
-    // A call that hits a broken connection is NOT retried: the connection is dropped and the
-    // next call gets a fresh one.
+    // PostgreSQL. A call that hits a broken connection is NOT retried: the connection is
+    // dropped and the next call gets a fresh one.
     class Repository {
     public:
         explicit Repository(std::string conninfo, std::size_t pool_size = 4);
@@ -42,6 +49,7 @@ namespace chargelink::db {
 
         void upsert_boot(const std::string& cp, const BootInfo& info);
         void set_online(const std::string& cp, bool online);
+        void mark_all_offline();
         void heartbeat(const std::string& cp);
         void record_status(const std::string& cp, int connector, const std::string& status,
             const std::string& error_code, const std::string& timestamp);
@@ -53,7 +61,8 @@ namespace chargelink::db {
         StopResult stop_transaction(const std::string& cp, int tx_id, std::int64_t meter_stop_wh,
             const std::string& timestamp, const std::string& reason);
 
-        void add_meter_value(const std::string& cp, std::optional<int> tx_id,
+        // Returns false (and stores nothing) if tx_id is not a transaction of this charger.
+        bool add_meter_value(const std::string& cp, std::optional<int> tx_id,
             const std::string& timestamp, const std::string& measurand,
             double value, const std::string& unit);
 

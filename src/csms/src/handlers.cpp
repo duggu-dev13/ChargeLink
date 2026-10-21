@@ -39,7 +39,7 @@ namespace chargelink::csms {
 
     }  // namespace
 
-    ocpp::Dispatcher make_dispatcher() {
+    ocpp::Dispatcher make_memory_dispatcher() {
         using namespace chargelink::ocpp;
         Dispatcher dispatcher;
         auto shared = std::make_shared<Shared>();

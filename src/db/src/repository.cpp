@@ -21,6 +21,7 @@ namespace chargelink::db {
                 "serial_number=EXCLUDED.serial_number, firmware_version=EXCLUDED.firmware_version, "
                 "last_boot_at=now(), online=true");
             c->prepare("set_online", "UPDATE charge_points SET online=$2 WHERE id=$1");
+            c->prepare("all_offline", "UPDATE charge_points SET online=false WHERE online");
             c->prepare("heartbeat", "UPDATE charge_points SET last_heartbeat_at=now() WHERE id=$1");
             c->prepare("upsert_connector",
                 "INSERT INTO connectors(charge_point_id,connector_id,status,error_code,updated_at) "
@@ -47,9 +48,13 @@ namespace chargelink::db {
             c->prepare("stop_tx",
                 "UPDATE transactions SET meter_stop_wh=$2, stopped_at=GREATEST($3::timestamptz, started_at), "
                 "stop_reason=NULLIF($4,'') WHERE id=$1");
+            // Stores the sample only if it has no transaction, or the transaction is this charger's.
             c->prepare("meter_value",
                 "INSERT INTO meter_values(charge_point_id,transaction_id,ts,measurand,value,unit) "
-                "VALUES($1,$2,$3::timestamptz,$4,$5,$6)");
+                "SELECT $1::text,$2::int,$3::timestamptz,$4::text,$5::numeric,$6::text "
+                "WHERE $2::int IS NULL OR EXISTS "
+                "(SELECT 1 FROM transactions WHERE id=$2::int AND charge_point_id=$1::text) "
+                "RETURNING id");
             c->prepare("authorize",
                 "SELECT CASE WHEN status='Accepted' AND expires_at IS NOT NULL AND expires_at < now() "
                 "THEN 'Expired' ELSE status END FROM id_tags WHERE id_tag=$1");
@@ -130,6 +135,9 @@ namespace chargelink::db {
             healthy = false;
             throw;
         }
+        catch (const pqxx::data_exception& e) {
+            throw BadInputError(e.what());  // SQLSTATE class 22: the value itself was bad
+        }
     }
 
     void Repository::upsert_boot(const std::string& cp, const BootInfo& b) {
@@ -140,6 +148,10 @@ namespace chargelink::db {
 
     void Repository::set_online(const std::string& cp, bool online) {
         run([&](pqxx::work& tx) { tx.exec_prepared0("set_online", cp, online); });
+    }
+
+    void Repository::mark_all_offline() {
+        run([&](pqxx::work& tx) { tx.exec_prepared0("all_offline"); });
     }
 
     void Repository::heartbeat(const std::string& cp) {
@@ -190,11 +202,13 @@ namespace chargelink::db {
             });
     }
 
-    void Repository::add_meter_value(const std::string& cp, std::optional<int> tx_id,
+    bool Repository::add_meter_value(const std::string& cp, std::optional<int> tx_id,
         const std::string& timestamp, const std::string& measurand,
         double value, const std::string& unit) {
-        run([&](pqxx::work& tx) {
-            tx.exec_prepared0("meter_value", cp, tx_id, timestamp, measurand, value, unit);
+        return run([&](pqxx::work& tx) {
+            pqxx::result r =
+                tx.exec_prepared("meter_value", cp, tx_id, timestamp, measurand, value, unit);
+            return !r.empty();
             });
     }
 
