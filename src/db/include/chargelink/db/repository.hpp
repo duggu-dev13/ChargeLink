@@ -29,6 +29,33 @@ namespace chargelink::db {
 
     enum class StopResult { Stopped, AlreadyStopped, NotFound, WrongCharger, MeterDecreased };
 
+    struct ChargerRow {
+        std::string id;
+        std::string vendor;
+        std::string model;
+        std::string firmware;
+        bool online = false;
+        std::string last_heartbeat;  // "YYYY-MM-DD HH:MM:SS" UTC, empty if never
+    };
+
+    struct TransactionRow {
+        int id = 0;
+        std::string charge_point_id;
+        int connector_id = 0;
+        std::string id_tag;
+        std::int64_t meter_start_wh = 0;
+        std::optional<std::int64_t> meter_stop_wh;  // empty while the session is open
+        std::string started_at;                     // UTC text
+        std::string stopped_at;                     // empty while open
+        std::string stop_reason;
+    };
+
+    struct EnergyRow {
+        std::string charge_point_id;
+        std::int64_t sessions = 0;  // finished sessions only
+        std::int64_t wh = 0;        // total delivered, Wh
+    };
+
     // Thrown when PostgreSQL rejects a VALUE the charger sent (bad timestamp, number out of
     // range). The handlers turn it into an OCPP FormationViolation.
     class BadInputError : public std::runtime_error {
@@ -68,6 +95,13 @@ namespace chargelink::db {
 
         // "Accepted" | "Blocked" | "Expired" | "Invalid" (unknown tag)
         std::string authorize(const std::string& id_tag);
+
+        // ---- read-only queries ----
+        std::vector<ChargerRow> list_chargers();
+        // Newest first. limit is clamped to 1..1000. An empty cp means "all chargers".
+        std::vector<TransactionRow> recent_transactions(int limit,
+            const std::optional<std::string>& cp);
+        std::vector<EnergyRow> energy_per_charger();
 
     private:
         std::unique_ptr<pqxx::connection> acquire();

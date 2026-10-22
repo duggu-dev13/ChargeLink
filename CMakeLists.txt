@@ -79,6 +79,11 @@ target_include_directories(chargelink_sim PUBLIC src/simulator/include)
 target_link_libraries(chargelink_sim PUBLIC chargelink_common)
 chargelink_setup(chargelink_sim)
 
+add_executable(report src/report/main.cpp)
+target_link_libraries(report PRIVATE chargelink_db)
+chargelink_setup(report)
+
+
 # ---- CSMS: testable core (no Boost networking) and the network layer ----
 add_library(chargelink_csms_core STATIC
     src/csms/src/path.cpp
@@ -125,6 +130,7 @@ add_executable(chargelink_tests
     tests/test_csms_state.cpp
     tests/test_repository.cpp
     tests/test_db_handlers.cpp
+    tests/test_queries.cpp
 )
 
 target_link_libraries(chargelink_tests PRIVATE

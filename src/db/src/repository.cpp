@@ -58,6 +58,22 @@ namespace chargelink::db {
             c->prepare("authorize",
                 "SELECT CASE WHEN status='Accepted' AND expires_at IS NOT NULL AND expires_at < now() "
                 "THEN 'Expired' ELSE status END FROM id_tags WHERE id_tag=$1");
+
+            c->prepare("list_chargers",
+                "SELECT id, coalesce(vendor,''), coalesce(model,''), coalesce(firmware_version,''), online, "
+                "coalesce(to_char(last_heartbeat_at AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS'),'') "
+                "FROM charge_points ORDER BY id");
+            c->prepare("recent_transactions",
+                "SELECT id, charge_point_id, connector_id, id_tag, meter_start_wh, meter_stop_wh, "
+                "to_char(started_at AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS'), "
+                "coalesce(to_char(stopped_at AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS'),''), "
+                "coalesce(stop_reason,'') FROM transactions "
+                "WHERE $1::text IS NULL OR charge_point_id=$1::text ORDER BY id DESC LIMIT $2::int");
+            c->prepare("energy_per_charger",
+                "SELECT charge_point_id, count(*), coalesce(sum(meter_stop_wh - meter_start_wh),0) "
+                "FROM transactions WHERE stopped_at IS NOT NULL "
+                "GROUP BY charge_point_id ORDER BY charge_point_id");
+
             return c;
         }
 
@@ -216,6 +232,60 @@ namespace chargelink::db {
         return run([&](pqxx::work& tx) -> std::string {
             pqxx::result r = tx.exec_prepared("authorize", id_tag);
             return r.empty() ? std::string("Invalid") : r[0][0].as<std::string>();
+            });
+    }
+
+    std::vector<ChargerRow> Repository::list_chargers() {
+        return run([&](pqxx::work& tx) {
+            std::vector<ChargerRow> out;
+            for (const auto& r : tx.exec_prepared("list_chargers")) {
+                ChargerRow c;
+                c.id = r[0].as<std::string>();
+                c.vendor = r[1].as<std::string>();
+                c.model = r[2].as<std::string>();
+                c.firmware = r[3].as<std::string>();
+                c.online = r[4].as<bool>();
+                c.last_heartbeat = r[5].as<std::string>();
+                out.push_back(std::move(c));
+            }
+            return out;
+            });
+    }
+
+    std::vector<TransactionRow> Repository::recent_transactions(
+        int limit, const std::optional<std::string>& cp) {
+        if (limit < 1) limit = 1;
+        if (limit > 1000) limit = 1000;
+        return run([&](pqxx::work& tx) {
+            std::vector<TransactionRow> out;
+            for (const auto& r : tx.exec_prepared("recent_transactions", cp, limit)) {
+                TransactionRow t;
+                t.id = r[0].as<int>();
+                t.charge_point_id = r[1].as<std::string>();
+                t.connector_id = r[2].as<int>();
+                t.id_tag = r[3].as<std::string>();
+                t.meter_start_wh = r[4].as<std::int64_t>();
+                if (!r[5].is_null()) t.meter_stop_wh = r[5].as<std::int64_t>();
+                t.started_at = r[6].as<std::string>();
+                t.stopped_at = r[7].as<std::string>();
+                t.stop_reason = r[8].as<std::string>();
+                out.push_back(std::move(t));
+            }
+            return out;
+            });
+    }
+
+    std::vector<EnergyRow> Repository::energy_per_charger() {
+        return run([&](pqxx::work& tx) {
+            std::vector<EnergyRow> out;
+            for (const auto& r : tx.exec_prepared("energy_per_charger")) {
+                EnergyRow e;
+                e.charge_point_id = r[0].as<std::string>();
+                e.sessions = r[1].as<std::int64_t>();
+                e.wh = r[2].as<std::int64_t>();
+                out.push_back(std::move(e));
+            }
+            return out;
             });
     }
 
