@@ -11,6 +11,7 @@
 #include <string>
 
 #include "chargelink/csms/charger_registry.hpp"
+#include "chargelink/csms/lifecycle.hpp"
 #include "chargelink/ocpp/dispatcher.hpp"
 
 namespace chargelink::csms {
@@ -20,7 +21,8 @@ namespace chargelink::csms {
     class Session : public ISession, public std::enable_shared_from_this<Session> {
     public:
         Session(boost::asio::ip::tcp::socket socket, std::shared_ptr<const ocpp::Dispatcher> dispatcher,
-            std::shared_ptr<ChargerRegistry> registry);
+            std::shared_ptr<ChargerRegistry> registry,
+            std::shared_ptr<const ConnectionHooks> hooks = nullptr);
 
         void run();
         const std::string& id() const override { return id_; }  // set once, before registration
@@ -46,6 +48,7 @@ namespace chargelink::csms {
         std::string id_;
         std::shared_ptr<const ocpp::Dispatcher> dispatcher_;
         std::shared_ptr<ChargerRegistry> registry_;
+        std::shared_ptr<const ConnectionHooks> hooks_;
         std::deque<std::string> write_queue_;
         bool writing_ = false;
         bool registered_ = false;

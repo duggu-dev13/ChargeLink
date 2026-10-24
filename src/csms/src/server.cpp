@@ -17,17 +17,20 @@ namespace chargelink::csms {
     using tcp = net::ip::tcp;
 
     std::shared_ptr<Server> Server::create(net::io_context& ioc, tcp::endpoint endpoint,
-        std::shared_ptr<const ocpp::Dispatcher> dispatcher) {
-        return std::shared_ptr<Server>(new Server(ioc, endpoint, std::move(dispatcher)));
+        std::shared_ptr<const ocpp::Dispatcher> dispatcher,
+        std::shared_ptr<const ConnectionHooks> hooks) {
+        return std::shared_ptr<Server>(new Server(ioc, endpoint, std::move(dispatcher), std::move(hooks)));
     }
 
     Server::Server(net::io_context& ioc, tcp::endpoint endpoint,
-        std::shared_ptr<const ocpp::Dispatcher> dispatcher)
+        std::shared_ptr<const ocpp::Dispatcher> dispatcher,
+        std::shared_ptr<const ConnectionHooks> hooks)
         : ioc_(ioc),
         endpoint_(endpoint),
         acceptor_(net::make_strand(ioc)),
         retry_timer_(acceptor_.get_executor()),
-        dispatcher_(std::move(dispatcher)) {
+        dispatcher_(std::move(dispatcher)),
+        hooks_(std::move(hooks)) {
     }
 
     void Server::start() {
@@ -85,7 +88,7 @@ namespace chargelink::csms {
                 });
             return;
         }
-        std::make_shared<Session>(std::move(socket), dispatcher_, registry_)->run();
+        std::make_shared<Session>(std::move(socket), dispatcher_, registry_, hooks_)->run();
         do_accept();
     }
 

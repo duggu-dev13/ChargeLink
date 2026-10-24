@@ -60,12 +60,15 @@ int main(int argc, char** argv) {
     spdlog::set_level(verbose ? spdlog::level::debug : spdlog::level::info);
 
     try {
+        auto csms = chargelink::csms::make_csms();
         auto dispatcher =
-            std::make_shared<const chargelink::ocpp::Dispatcher>(chargelink::csms::make_dispatcher());
+            std::make_shared<const chargelink::ocpp::Dispatcher>(std::move(csms.dispatcher));
+        auto hooks =
+            std::make_shared<const chargelink::csms::ConnectionHooks>(std::move(csms.hooks));
 
         net::io_context ioc{ static_cast<int>(threads) };
         auto server = chargelink::csms::Server::create(
-            ioc, boost::asio::ip::tcp::endpoint{ boost::asio::ip::tcp::v4(), port }, dispatcher);
+            ioc, boost::asio::ip::tcp::endpoint{ boost::asio::ip::tcp::v4(), port }, dispatcher, hooks);
         server->start();
         spdlog::info("CSMS listening on port {} with {} thread(s); Ctrl+C to stop", port, threads);
 
@@ -86,6 +89,9 @@ int main(int argc, char** argv) {
         run_io(ioc);
         for (auto& thread : pool) {
             thread.join();
+        }
+        if (hooks->on_shutdown) {
+            hooks->on_shutdown();  // every connection is gone: mark all chargers offline
         }
         spdlog::info("CSMS stopped");
         return 0;

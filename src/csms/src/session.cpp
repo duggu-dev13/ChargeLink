@@ -4,6 +4,8 @@
 #include <spdlog/spdlog.h>
 
 #include <chrono>
+#include <exception>
+#include <functional>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -28,11 +30,29 @@ namespace chargelink::csms {
             return out;
         }
 
+        // A hook that throws must never take the session down with it.
+        void run_hook(const std::function<void(const std::string&)>& hook, const std::string& id,
+            const char* what) {
+            if (!hook) {
+                return;
+            }
+            try {
+                hook(id);
+            }
+            catch (const std::exception& e) {
+                spdlog::error("[{}] {} hook failed: {}", id, what, e.what());
+            }
+        }
+
     }  // namespace
 
     Session::Session(tcp::socket socket, std::shared_ptr<const ocpp::Dispatcher> dispatcher,
-        std::shared_ptr<ChargerRegistry> registry)
-        : ws_(std::move(socket)), dispatcher_(std::move(dispatcher)), registry_(std::move(registry)) {
+        std::shared_ptr<ChargerRegistry> registry,
+        std::shared_ptr<const ConnectionHooks> hooks)
+        : ws_(std::move(socket)),
+        dispatcher_(std::move(dispatcher)),
+        registry_(std::move(registry)),
+        hooks_(std::move(hooks)) {
     }
 
     void Session::run() {
@@ -102,6 +122,9 @@ namespace chargelink::csms {
             added.replaced->close();  // outside the registry's lock
         }
         spdlog::info("[{}] connected; online: {}", id_, join(registry_->ids()));
+        if (hooks_) {
+            run_hook(hooks_->on_connect, id_, "connect");  // before the first read: boot comes first
+        }
         do_read();
     }
 
@@ -214,13 +237,23 @@ namespace chargelink::csms {
             return;
         }
         shut_down_ = true;
+
+        // Only the connection that is STILL registered for this charger reports a
+        // disconnect. A replaced (older) connection must not mark its successor offline.
+        bool report_disconnect = false;
         if (registered_) {
             registered_ = false;
-            registry_->remove(*this);
+            report_disconnect = registry_->remove(*this);
             spdlog::info("[{}] gone; online: {}", id_, join(registry_->ids()));
         }
+
         beast::error_code ignored;
         beast::get_lowest_layer(ws_).socket().close(ignored);  // aborts any pending operation
+
+        // Last, because it talks to the database: the socket is already closed.
+        if (report_disconnect && hooks_) {
+            run_hook(hooks_->on_disconnect, id_, "disconnect");
+        }
     }
 
 }  // namespace chargelink::csms

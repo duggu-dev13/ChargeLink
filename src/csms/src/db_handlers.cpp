@@ -66,7 +66,7 @@ namespace chargelink::csms {
 
     }  // namespace
 
-    ocpp::Dispatcher make_db_dispatcher(std::shared_ptr<db::Repository> repo) {
+    CsmsHandlers make_db_handlers(std::shared_ptr<db::Repository> repo) {
         using namespace chargelink::ocpp;
         Dispatcher dispatcher;
         auto shared = std::make_shared<DbShared>();
@@ -233,24 +233,56 @@ namespace chargelink::csms {
                 return MeterValuesResponse{};
             });
 
-        return dispatcher;
-    }
+        ConnectionHooks hooks;
+        hooks.on_connect = [shared](const std::string& cp_id) {
+            shared->chargers.forget(cp_id);  // every new connection starts with a BootNotification
+            };
+        hooks.on_disconnect = [shared](const std::string& cp_id) {
+            shared->chargers.forget(cp_id);
+            try {
+                shared->repo->set_online(cp_id, false);
+            }
+            catch (const std::exception& e) {
+                spdlog::error("[{}] could not mark the charger offline: {}", cp_id, e.what());
+            }
+            };
+        hooks.on_shutdown = [shared] {
+            try {
+                shared->repo->mark_all_offline();
+            }
+            catch (const std::exception& e) {
+                spdlog::error("could not mark the chargers offline at shutdown: {}", e.what());
+            }
+            };
 
-    ocpp::Dispatcher make_dispatcher() {
-        const char* conninfo = std::getenv("CHARGELINK_DB");
-        if (conninfo == nullptr || *conninfo == '\0') {
-            spdlog::warn("CHARGELINK_DB is not set: using the in-memory store (nothing is persisted)");
-            return make_memory_dispatcher();
-        }
-        try {
-            auto repo = std::make_shared<db::Repository>(conninfo);
-            spdlog::info("connected to PostgreSQL");
-            return make_db_dispatcher(std::move(repo));
-        }
-        catch (const std::exception& e) {
-            spdlog::critical("cannot start: database unavailable: {}", e.what());
-            std::exit(EXIT_FAILURE);  // fail fast rather than run half-broken
-        }
+        return CsmsHandlers{ std::move(dispatcher), std::move(hooks) };
+}
+
+ocpp::Dispatcher make_db_dispatcher(std::shared_ptr<db::Repository> repo) {
+    auto handlers = make_db_handlers(std::move(repo));
+    return std::move(handlers.dispatcher);
+}
+
+CsmsHandlers make_csms() {
+    const char* conninfo = std::getenv("CHARGELINK_DB");
+    if (conninfo == nullptr || *conninfo == '\0') {
+        spdlog::warn("CHARGELINK_DB is not set: using the in-memory store (nothing is persisted)");
+        return CsmsHandlers{ make_memory_dispatcher(), ConnectionHooks{} };
     }
+    try {
+        auto repo = std::make_shared<db::Repository>(conninfo);
+        spdlog::info("connected to PostgreSQL");
+        return make_db_handlers(std::move(repo));
+    }
+    catch (const std::exception& e) {
+        spdlog::critical("cannot start: database unavailable: {}", e.what());
+        std::exit(EXIT_FAILURE);  // fail fast rather than run half-broken
+    }
+}
+
+ocpp::Dispatcher make_dispatcher() {
+    auto handlers = make_csms();
+    return std::move(handlers.dispatcher);
+}
 
 }  // namespace chargelink::csms

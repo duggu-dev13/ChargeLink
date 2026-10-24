@@ -131,6 +131,7 @@ add_executable(chargelink_tests
     tests/test_repository.cpp
     tests/test_db_handlers.cpp
     tests/test_queries.cpp
+    tests/test_lifecycle.cpp
 )
 
 target_link_libraries(chargelink_tests PRIVATE

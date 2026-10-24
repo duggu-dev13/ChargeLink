@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "chargelink/csms/charger_registry.hpp"
+#include "chargelink/csms/lifecycle.hpp"
 #include "chargelink/ocpp/dispatcher.hpp"
 
 namespace chargelink::csms {
@@ -16,14 +17,16 @@ namespace chargelink::csms {
     public:
         static std::shared_ptr<Server> create(boost::asio::io_context& ioc,
             boost::asio::ip::tcp::endpoint endpoint,
-            std::shared_ptr<const ocpp::Dispatcher> dispatcher);
+            std::shared_ptr<const ocpp::Dispatcher> dispatcher,
+            std::shared_ptr<const ConnectionHooks> hooks = nullptr);
 
         void start();  // throws boost::system::system_error if the port cannot be opened
         void stop();   // stop accepting and close every connection; any thread
 
     private:
         Server(boost::asio::io_context& ioc, boost::asio::ip::tcp::endpoint endpoint,
-            std::shared_ptr<const ocpp::Dispatcher> dispatcher);
+            std::shared_ptr<const ocpp::Dispatcher> dispatcher,
+            std::shared_ptr<const ConnectionHooks> hooks);
 
         void do_accept();
         void on_accept(boost::beast::error_code ec, boost::asio::ip::tcp::socket socket);
@@ -33,6 +36,7 @@ namespace chargelink::csms {
         boost::asio::ip::tcp::acceptor acceptor_;
         boost::asio::steady_timer retry_timer_;
         std::shared_ptr<const ocpp::Dispatcher> dispatcher_;
+        std::shared_ptr<const ConnectionHooks> hooks_;
         std::shared_ptr<ChargerRegistry> registry_ = std::make_shared<ChargerRegistry>();
         bool stopping_ = false;  // only touched on the acceptor's strand
     };
